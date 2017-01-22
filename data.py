@@ -180,11 +180,11 @@ class Data(object):
         mode = np.sqrt(self.milner_indices()[i][1])
         
         spacing = self.x_ray_wavelength*mode/(2*math.sin(theta))
-        error = self.x_ray_wavelength*mode/2/math.sin(theta)**2*math.cos(theta)*theta_err
+        error = abs(self.x_ray_wavelength*mode/2/math.sin(theta)**2*math.cos(theta)*theta_err)
         
         return spacing, error, centre
     
-    def draw_lattice(self):
+    def average_lattice(self):
         pts = [self.lattice_parameter(i) for i in range(len(self.peaks))]
         y = [pt[0] for pt in pts]
         y_err = np.array([pt[1] for pt in pts])
@@ -192,7 +192,6 @@ class Data(object):
         
         thetas = [math.radians(point)/2 for point in x]
         nelson = np.array([(math.cos(theta)**2/(math.sin(theta)))+math.cos(theta)**2/theta for theta in thetas])
-        
         
         popt, pcov = curve_fit(
             linear,
@@ -205,35 +204,8 @@ class Data(object):
         chi_square = (y - y_fit)**2 / y_err**2
         print(sum(chi_square))
         
-        plt.errorbar(nelson, y, yerr=y_err)
-        plt.plot(nelson, y_fit)
-        plt.show()
+        #plt.errorbar(nelson, y, yerr=y_err)
+        #plt.plot(nelson, y_fit)
+        #plt.show()
         
-    
-    def lattice_parameters(self):
-        fits = [self.fit_gaussian(i) for i in range(len(self.peaks))]
-        centres = [fit[0][1] for fit in fits]
-        errors = [np.sqrt(fit[1][1][1]) for fit in fits]
-        
-        milner = self.milner_indices()
-        
-        sum_val = 0
-        sum_error = 0
-        for milner, centre, cent_err, i in zip(milner, centres, errors, range(20)):
-            if True:
-                mode = math.sqrt(milner[1])
-                theta = math.radians(centre/2)
-                theta_err = math.radians(cent_err/2)
-                
-                spacing = self.x_ray_wavelength*mode/(2*math.sin(theta))
-                space_err = self.x_ray_wavelength*mode/2/math.sin(theta)**2*math.cos(theta)*theta_err
-                in_variance = 1/space_err**2
-                
-                sum_val += spacing * in_variance
-                sum_error += in_variance
-                break
-        
-        value = sum_val / sum_error
-        error = 1/np.sqrt(sum_error)
-        
-        return value, error
+        return popt[1], np.sqrt(pcov[1][1])
