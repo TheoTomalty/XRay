@@ -17,6 +17,9 @@ def mask(array, boolean_mask):
 def gaussian(x, a, b, c):
     return a * np.exp(-c * (x - b)*(x - b))
 
+def linear(x, a, b):
+    return a * x + b
+
 def chi_sq(y, y_fit, err):
     return sum((y - y_fit)**2 / err**2)/len(y)
 
@@ -184,13 +187,26 @@ class Data(object):
     def draw_lattice(self):
         pts = [self.lattice_parameter(i) for i in range(len(self.peaks))]
         y = [pt[0] for pt in pts]
-        y_err = [pt[1] for pt in pts]
+        y_err = np.array([pt[1] for pt in pts])
         x = [pt[2] for pt in pts]
         
-        print y, y_err
+        thetas = [math.radians(point)/2 for point in x]
+        nelson = np.array([(math.cos(theta)**2/(math.sin(theta)))+math.cos(theta)**2/theta for theta in thetas])
         
-        plt.errorbar(x, y, yerr=y_err)
-        #plt.axis([40, 100, 0.36, 0.362])
+        
+        popt, pcov = curve_fit(
+            linear,
+            nelson, y,
+            sigma=y_err,
+            p0=(0.1/100.0, 0.36)
+        )
+        
+        y_fit = popt[0]*nelson + popt[1]
+        chi_square = (y - y_fit)**2 / y_err**2
+        print(sum(chi_square))
+        
+        plt.errorbar(nelson, y, yerr=y_err)
+        plt.plot(nelson, y_fit)
         plt.show()
         
     
