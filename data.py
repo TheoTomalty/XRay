@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 
 #TODO: Add second fit to funciton rather than lattice spacing / better sigma estimation from width
 
+x_ray_wavelength = 0.1541
+
 def mask(array, boolean_mask):
     temp_array = []
     for element, boolean in zip(array, boolean_mask):
@@ -19,6 +21,9 @@ def gaussian(x, a, b, c):
 
 def linear(x, a, b):
     return a * x + b
+
+def correction(x, a, b):
+    return a * (1 - np.cos(x)**2 / np.sin(x) * b)
 
 def chi_sq(y, y_fit, err):
     return sum((y - y_fit)**2 / err**2)/len(y)
@@ -127,7 +132,7 @@ class Data(object):
         
         y_fit = gaussian(x_data, *popt)
         chi_square = chi_sq(y_data, y_fit, y_error)
-        #print chi_square
+        print chi_square
         
         return popt, pcov
     
@@ -168,8 +173,6 @@ class Data(object):
     def peak_centre(self, i):
         popt, pcov = self.fit_gaussian(i)
         
-        print popt[1], np.sqrt(pcov[1][1])
-        
         return popt[1], np.sqrt(pcov[1][1])
     
     def lattice_parameter(self, i):
@@ -184,28 +187,30 @@ class Data(object):
         
         return spacing, error, centre
     
-    def average_lattice(self):
+    def average_lattice(self, draw=False):
         pts = [self.lattice_parameter(i) for i in range(len(self.peaks))]
-        y = [pt[0] for pt in pts]
+        y = np.array([pt[0] for pt in pts])
         y_err = np.array([pt[1] for pt in pts])
         x = [pt[2] for pt in pts]
         
-        thetas = [math.radians(point)/2 for point in x]
-        nelson = np.array([(math.cos(theta)**2/(math.sin(theta)))+math.cos(theta)**2/theta for theta in thetas])
+        thetas = np.array([math.radians(point)/2 for point in x])
         
         popt, pcov = curve_fit(
-            linear,
-            nelson, y,
+            correction,
+            thetas, y,
             sigma=y_err,
             p0=(0.1/100.0, 0.36)
         )
         
-        y_fit = popt[0]*nelson + popt[1]
-        chi_square = (y - y_fit)**2 / y_err**2
-        print(sum(chi_square))
+        y_fit = correction(thetas, *popt)
+        chi_square = chi_sq(y, y_fit, y_err)
+        print chi_square
         
-        #plt.errorbar(nelson, y, yerr=y_err)
-        #plt.plot(nelson, y_fit)
-        #plt.show()
+        if draw:
+            plt.errorbar(thetas, y, yerr=y_err)
+            plt.plot(thetas, y_fit)
+            plt.show()
         
-        return popt[1], np.sqrt(pcov[1][1])
+        print popt[0], np.sqrt(pcov[0][0]),  "\n"
+        
+        return popt[0], np.sqrt(pcov[0][0])
