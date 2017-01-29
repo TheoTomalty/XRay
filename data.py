@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 
 #TODO: Add second fit to funciton rather than lattice spacing / better sigma estimation from width
 
-x_ray_wavelength = 0.1541
+x_ray_wavelength = 0.15418
+x_ray_separation  = 0.0004
+
+statistical_xray = x_ray_separation/x_ray_wavelength/20
 
 def mask(array, boolean_mask):
     temp_array = []
@@ -17,7 +20,7 @@ def mask(array, boolean_mask):
     return np.array(temp_array)
 
 def gaussian(x, a, b, c):
-    return a * np.exp(-c * (x - b)*(x - b))
+    return a * np.exp(-(x - b)*(x - b)/2/c**2)
 
 def linear(x, a, b):
     return a * x + b
@@ -25,8 +28,8 @@ def linear(x, a, b):
 def correction(x, a, b):
     return a * (1 - np.cos(x)**2 / np.sin(x) * b)
 
-def chi_sq(y, y_fit, err):
-    return sum((y - y_fit)**2 / err**2)/len(y)
+def chi_sq(y, y_fit, err, num_params):
+    return sum((y - y_fit)**2 / err**2)/(len(y) - num_params)
 
 def all_even(elements):
     for element in elements:
@@ -52,7 +55,7 @@ class Data(object):
         
         self.noise_cut = 40
         self.angle_step = 0.05
-        self.x_ray_wavelength = 0.1541
+        self.x_ray_wavelength = x_ray_wavelength
 
         if file_name is not None:
             self.import_txt(file_name)
@@ -69,6 +72,9 @@ class Data(object):
     
     def draw(self):
         plt.plot(self.angle, self.count)
+        plt.title('X-Ray Diffraction Spectrum of Copper')
+        plt.ylabel('Photon Count')
+        plt.xlabel('2$\Theta$ ($^\circ$)')
         plt.show()
     
     def index(self, angle):
@@ -127,12 +133,12 @@ class Data(object):
             gaussian,
              x_data, y_data,
             sigma=y_error,  
-            p0=(peak, centre, 1.0/(width)**2)
+            p0=(peak, centre, width/2)
         )
         
         y_fit = gaussian(x_data, *popt)
-        chi_square = chi_sq(y_data, y_fit, y_error)
-        print chi_square
+        chi_square = chi_sq(y_data, y_fit, y_error, 3)
+        print "Gaussian", popt[1], np.sqrt(pcov[1][1]), chi_square*(len(y_data) - 3), len(y_data) - 3
         
         return popt, pcov
     
@@ -143,10 +149,19 @@ class Data(object):
         
         y_fit = gaussian(x_data, *params)
         
-        plt.plot(x_data, y_data)
-        plt.plot(x_data, y_fit)
-        plt.axis([centre - width, centre + width, 0, peak*1.3])
-        plt.show()
+        plt.errorbar(x_data, y_data, y_error, ls='none', fmt='-o')
+        
+        x_cont = np.arange(x_data[0], x_data[-1], 0.005)
+        y_cont = gaussian(x_cont, *params)
+        plt.plot(x_cont, y_cont)
+        plt.ylabel("Photon Count")
+        width1 = x_data[-1] - x_data[0]
+        range = [centre - width1, centre + width1, 0, peak*1.2]
+        plt.axis(range)
+        
+        #print "Fit Params: ", params, np.sqrt(_)
+        
+        return y_data, y_error, y_fit, x_data, range
     
     def milner_indices(self):
         milner = []
@@ -183,7 +198,11 @@ class Data(object):
         mode = np.sqrt(self.milner_indices()[i][1])
         
         spacing = self.x_ray_wavelength*mode/(2*math.sin(theta))
-        error = abs(self.x_ray_wavelength*mode/2/math.sin(theta)**2*math.cos(theta)*theta_err)
+        error1 = abs(self.x_ray_wavelength*mode/2/math.sin(theta)**2*math.cos(theta)*theta_err)
+        error2 = statistical_xray * spacing
+        error = math.sqrt(error1**2 + error2**2)
+        
+        print "Lattice Parameter", spacing, error
         
         return spacing, error, centre
     
@@ -203,14 +222,18 @@ class Data(object):
         )
         
         y_fit = correction(thetas, *popt)
-        chi_square = chi_sq(y, y_fit, y_err)
-        print chi_square
+        chi_square = chi_sq(y, y_fit, y_err, 2)
+        #print chi_square*(len(y) - 2), (len(y) - 2)
         
         if draw:
-            plt.errorbar(thetas, y, yerr=y_err)
-            plt.plot(thetas, y_fit)
-            plt.show()
+            plt.errorbar(x, y*10, yerr=y_err*10, ls='none', fmt='-o')
+            x_cont = np.arange(x[0]-1, x[-1] + 2, 1)
+            theta_cont = np.array([math.radians(point)/2 for point in x_cont])
+            y_cont = correction(theta_cont, *popt)
+            plt.plot(x_cont, y_cont*10)
+            plt.ylabel("Lattice Parameter ($\AA$)")
         
-        print popt[0], np.sqrt(pcov[0][0]),  "\n"
+        #print "Combined Lattice", popt[0], np.sqrt(pcov[0][0]), popt[0]*x_ray_separation/x_ray_wavelength/2, "\n"
+        #print popt, np.sqrt(pcov)
         
-        return popt[0], np.sqrt(pcov[0][0])
+        return y, y_err, y_fit, x
