@@ -41,3 +41,5 @@ B.remove_noise()
 
 #for i in range(13):
 #    B.fit_double(i, draw=True)
+
+print B.integrated_intensity(2, draw=True)

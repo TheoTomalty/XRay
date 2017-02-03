@@ -208,41 +208,10 @@ class Data(object):
         
         return popt, pcov
     
-    def fit_gaussian(self, i, draw=False):
-        peak, centre, width = self.peaks[i]
-        x_data, y_data, y_error = self.get_range(centre - width/2, centre + width/2)
-        if len(x_data) < 10 or peak < 100:
-            print "ERROR", len(x_data), peak
-            return None, None
-        
-        popt, pcov = curve_fit(
-            gaussian,
-             x_data, y_data,
-            sigma=y_error,  
-            p0=(peak/4, centre, width/4, peak, width/6)
-        )
-        
-        y_fit = gaussian(x_data, *popt)
-        chi_square = chi_sq(y_data, y_fit, y_error, 5)
-        print "Gaussian", popt[1], np.sqrt(pcov[1][1]), chi_square*(len(y_data) - 3), len(y_data) - 3
-        
-        if draw:
-            plt.errorbar(x_data, y_data, y_error, ls='none', fmt='-o')
-            
-            x_cont = np.arange(x_data[0], x_data[-1], 0.005)
-            y_cont = gaussian(x_cont, *popt)
-            plt.plot(x_cont, y_cont)
-            plt.show()
-        
-        return popt, pcov
-    
     def integrated_intensity(self, i, draw=False):
-        peak, centre, width = self.peaks[i]
-        x_data, y_data, y_error = self.get_range(centre - width/2, centre + width/2)
-        if len(x_data) < 10 or peak < 100:
-            print "ERROR", len(x_data), peak
-            return None, None
-            
+        peak, centre, bounds = self.peaks[i]
+        x_data, y_data, y_error = self.get_range(bounds[0], bounds[1])
+        
         integral = 0
         variance = 0
         for val, error in zip(y_data, y_error):
@@ -250,7 +219,7 @@ class Data(object):
             variance += (error * self.angle_step)**2
         
         if draw:
-            plt.errorbar(x_data, y_data, y_error)
+            plt.plot(x_data, y_data)
             plt.show()
         
         return integral, np.sqrt(variance)
