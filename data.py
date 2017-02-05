@@ -4,8 +4,6 @@ import math
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
-#TODO: Add second fit to funciton rather than lattice spacing / better sigma estimation from width
-
 k_alpha1 = 0.154056
 k_alpha2 = 0.154439
 x_ray_wavelength = 0.15418
@@ -15,8 +13,6 @@ a = (x_ray_wavelength - k_alpha2)/(-x_ray_separation)
 b = (x_ray_wavelength - k_alpha1)/(x_ray_separation)
 
 proportion = b/a
-
-statistical_xray = 0
 
 def rad(angle):
     return angle*math.pi/180
@@ -44,17 +40,17 @@ def gaussian(x, A, x_0, sigma, B, gamma):
 #    
 #    return A * (1/(1 + scaling1**2) + (proportion * gamma1/gamma2) / (1 + scaling2**2)) + B
 
-def double_peak(x, centre, A, sigma1, sigma2, tail, gamma):
-    centre1 = centre + 2*deg((k_alpha1/x_ray_wavelength - 1) * np.tan(rad(centre/2)))
-    centre2 = centre + 2*deg((k_alpha2/x_ray_wavelength - 1) * np.tan(rad(centre/2)))
+def double_peak(x, centre, A, sigma1, tail, gamma):
+    centre1 = centre
+    centre2 = centre + 2*deg((x_ray_separation/x_ray_wavelength) * np.tan(rad(centre/2)))
     
     scaling1 = -(x - centre1)**2 / (2*sigma1**2)
     scaling2 = -(x - centre2)**2 / (2*sigma1**2)
     lorentz1 = (x - centre1)**2/gamma**2
     lorentz2 = (x - centre2)**2/gamma**2
     
-    return A * (np.exp(scaling1) + proportion * np.exp(scaling2))\
-           + A*tail * (1/(1 + lorentz1) + proportion / (1 + lorentz2))
+    return A * (np.exp(scaling1) + proportion * np.exp(scaling2)) \
+           + tail * (1/(1 + lorentz1) + proportion / (1 + lorentz2))
 
 def noise_funct(x, A):
     return np.array([A]*len(x)) #+ B * np.exp(-x**2/2/sigma**2)
@@ -64,7 +60,6 @@ def linear(x, a, b):
 
 def chi_sq(y, y_fit, err, num_params):
     return sum((y - y_fit)**2 / err**2)/(len(y) - num_params)
-
 
 class Data(object):
     def __init__(self, file_name=None, peaks=None, noise=None, uxd=False):
@@ -77,13 +72,13 @@ class Data(object):
         
         self.noise_cut = 30
         self.angle_step = 0.05
-        self.x_ray_wavelength = x_ray_wavelength
+        self.x_ray_wavelength = k_alpha1
 
         if file_name is not None:
             self.import_txt(file_name, uxd)
             if self.peaks == None:
                 self.peaks = self.peak_finder()
-
+    
     def import_txt(self, file_name, uxd=False):
         if uxd:
             min = 1
@@ -97,12 +92,12 @@ class Data(object):
             for line in file:
                 angle, count = map(float, line[min:max].split(string))
                 self.count = np.append(self.count, count)
-                self.error = np.append(self.error, np.sqrt(count))
+                self.error = np.append(self.error, (np.sqrt(count) if count else 1))
                 self.angle = np.append(self.angle, angle)
     
     def draw(self):
         plt.plot(self.angle, self.count)
-        #plt.show()
+        plt.show()
     
     def index(self, angle):
         index_range = len(self.angle)
@@ -139,8 +134,20 @@ class Data(object):
         
         return parameters
     
-    def remove_noise(self, draw=False):
-        if self.noise == None:
+    def remove_noise(self):
+        if isinstance(self.noise, tuple):
+            begin_bounds, end_bounds = self.noise
+            x1, y1, _ = self.get_range(begin_bounds[0], begin_bounds[1])
+            x2, y2, _ = self.get_range(end_bounds[0], end_bounds[1])
+            
+            centre_1, average_1 = np.mean(x1), np.mean(y1)
+            centre_2, average_2 = np.mean(x2), np.mean(y2)
+            
+            count_correction = np.array(
+                [average_1 + (average_2 - average_1) * (angle - centre_1)/(centre_2 - centre_1) for angle in self.angle]
+            )
+            
+        elif self.noise == None:
             boolean = [True]*len(self.angle)
             ranges = []
             
@@ -151,27 +158,14 @@ class Data(object):
                 for index in range(bounds[0], bounds[1] + 1):
                     boolean[index] = False
             
-            x = mask(self.angle, boolean)
             y = mask(self.count, boolean)
-        else:
-            x, y, _ = self.get_range(self.noise[0], self.noise[1])
-        
-        average = np.mean(y)
-        rms = np.sqrt(np.mean((y - np.array([average]*len(x)))**2))
-        
-        if draw:
-            x_cont = np.arange(x[0], x[-1], 0.005)
-            y_cont = np.array([average]*len(x_cont))
+            count_correction = np.array([np.mean(y)]*len(self.angle))
             
-            plt.plot(x, y)
-            plt.plot(x_cont, y_cont)
-            plt.show()
-        
-        count_correction = np.array([average]*len(self.angle))
-        error_correction = np.array([rms]*len(self.angle))
+        else:
+            __, y, _ = self.get_range(self.noise[0], self.noise[1])
+            count_correction = np.array([np.mean(y)]*len(self.angle))
         
         self.count -= count_correction
-        self.error = np.sqrt(error_correction**2 + self.error**2)
     
     def get_range(self, min, max):
         index_min = None
@@ -188,7 +182,7 @@ class Data(object):
         
         return x_data, y_data, y_error
     
-    def fit_double(self, i, draw=False):
+    def fit_double(self, i, draw=False, width=0.5):
         peak, centre, bounds = self.peaks[i]
         x_data, y_data, y_error = self.get_range(bounds[0], bounds[1])
         
@@ -196,21 +190,26 @@ class Data(object):
             double_peak,
              x_data, y_data,
             sigma=y_error,  
-            p0=(centre, peak, 0.1, 0.1, 0, (bounds[0] - bounds[1])/4)
+            p0=(centre, peak, width, 0, (bounds[1] - bounds[0])/2)
         )
         
         if draw:
-            print popt[4]
             plt.plot(x_data, y_data)
             y_fit = double_peak(x_data, *popt)
+            print chi_sq(y_data, y_fit, y_error, 5)
             plt.plot(x_data, y_fit)
             plt.show()
         
-        return popt, pcov
+        x = popt[0]
+        systematic_error = 0.05 * x_ray_separation/x_ray_wavelength * np.tan(rad(x/2)) * 180/np.pi
+        
+        return popt[0], np.sqrt(pcov[0][0]**2 + systematic_error**2)
     
     def integrated_intensity(self, i, draw=False):
         peak, centre, bounds = self.peaks[i]
-        x_data, y_data, y_error = self.get_range(bounds[0], bounds[1])
+        x_data, y_data, y_error = self.get_range(bounds[0] - 2, bounds[1] + 2)
+        
+        base = (x_data[-1] - x_data[0])
         
         integral = 0
         variance = 0
@@ -222,4 +221,4 @@ class Data(object):
             plt.plot(x_data, y_data)
             plt.show()
         
-        return integral, np.sqrt(variance)
+        return integral, np.sqrt(variance + (3*base)**2)
