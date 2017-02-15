@@ -35,6 +35,7 @@ class MultiLattice(d.Data):
             if noise is not None:
                 self.Sn.remove_noise()
             self.Sn.fill_peaks(draw=draw)
+            print file_name
             self.a, self.epsilon = self.lattice_a(draw=draw)
         if initialize_pb:
             if noise is not None:
@@ -57,7 +58,7 @@ class MultiLattice(d.Data):
     
     def correction(self, x, b, epsilon):
         factors = np.array(self.global_factor)
-        return b * (1 - factors * np.cos(x) / np.sin(x) * epsilon)
+        return b * (1 - factors * np.cos(x)**2 / np.sin(x) * epsilon)
     
     def lattice_b(self, draw=False, remove_peaks=None):
         pts = []

@@ -3,6 +3,7 @@ import numpy as np
 import math
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+import draw as display
 
 k_alpha1 = 0.154056
 k_alpha2 = 0.154439
@@ -31,15 +32,6 @@ def mask(array, boolean_mask):
 def gaussian(x, A, x_0, sigma, B, gamma):
     return A * np.exp(-(x - x_0)**2/2/sigma**2) + B/(np.pi*gamma*(1.0 + (x - x_0)**2/gamma**2))
 
-#def double_peak(x, centre, A, gamma1, gamma2, B):
-#    centre1 = centre + 2*deg((k_alpha1/x_ray_wavelength - 1) * np.tan(rad(centre/2)))
-#    centre2 = centre + 2*deg((k_alpha2/x_ray_wavelength - 1) * np.tan(rad(centre/2)))
-#    
-#    scaling1 = (x - centre1)/gamma1
-#    scaling2 = (x - centre2)/gamma2
-#    
-#    return A * (1/(1 + scaling1**2) + (proportion * gamma1/gamma2) / (1 + scaling2**2)) + B
-
 def double_peak(x, centre, A, sigma1, tail, gamma):
     centre1 = centre
     centre2 = centre + 2*deg((x_ray_separation/x_ray_wavelength) * np.tan(rad(centre/2)))
@@ -59,7 +51,7 @@ def linear(x, a, b):
     return a * x + b
 
 def chi_sq(y, y_fit, err, num_params):
-    return sum((y - y_fit)**2 / err**2)/(len(y) - num_params)
+    return sum((y - y_fit)**2 / err**2)
 
 class Data(object):
     def __init__(self, file_name=None, peaks=None, noise=None, uxd=False):
@@ -96,8 +88,7 @@ class Data(object):
                 self.angle = np.append(self.angle, angle)
     
     def draw(self):
-        plt.plot(self.angle, self.count)
-        plt.show()
+        display.spectrum(self.angle, self.count)
     
     def index(self, angle):
         index_range = len(self.angle)
@@ -194,20 +185,22 @@ class Data(object):
         )
         
         if draw:
-            plt.plot(x_data, y_data)
             y_fit = double_peak(x_data, *popt)
-            print chi_sq(y_data, y_fit, y_error, 5)
-            plt.plot(x_data, y_fit)
-            plt.show()
+            if i < 7:
+                n = (1, 1, 0)
+            else:
+                n = (2, 2, 2)
+            display.peak(x_data, y_data, y_error, y_fit, bounds, popt, pcov, chi_sq(y_data, y_fit, y_error, 5), n)
         
         x = popt[0]
-        systematic_error = 0.05 * x_ray_separation/x_ray_wavelength * np.tan(rad(x/2)) * 180/np.pi
+        systematic_error = 1/15 * x_ray_separation/x_ray_wavelength * np.tan(rad(x/2)) * 180/np.pi
         
         return popt[0], np.sqrt(pcov[0][0]**2 + systematic_error**2)
     
     def integrated_intensity(self, i, draw=False):
         peak, centre, bounds = self.peaks[i]
         x_data, y_data, y_error = self.get_range(bounds[0] - 2, bounds[1] + 2)
+        print (bounds[0] - 2, bounds[1] + 2)
         
         base = (x_data[-1] - x_data[0])
         

@@ -21,7 +21,7 @@ class IntensityAnalysis(p.ParameterAnalysis):
     def __init__(self, file_name=None, peaks=None, noise=None, uxd=False):
         p.ParameterAnalysis.__init__(self, file_name, peaks, noise, uxd)
         
-        self.peak_ignore = 0
+        self.peak_ignore = 6
         
         self.peak_intensities = []
     
@@ -48,16 +48,20 @@ class IntensityAnalysis(p.ParameterAnalysis):
         return order_parameter * (self.au_scattering_factor(angle) - self.cu_scattering_factor(angle))
         
     
-    def intensity(self, i, order_parameter=1.0):
+    def intensity(self, i, order_parameter=1.0, epsilon=0.0):
         indices, _, __ = self.miller_indices("any")[i]
         p = [6, 12, 8, 6, 24, 24, 12, 30, 24, 24, 8, 24, 48][i]
         angle, error = self.peak_centres[i]
+        #angle = angle - epsilon*2*180/np.pi*np.cos(d.rad(angle/2))
+        TF = np.exp(epsilon * (np.sin(d.rad(angle/2)))**2)
+        #if i == 6:
+        #    angle = angle - 2
         lorentz_polarization = (1 + math.cos(d.rad(angle))**2) / (math.sin(d.rad(angle/2))**2 * math.cos(d.rad(angle/2)))
         
-        return self.structure_factor(indices, order_parameter, angle)**2 * p * lorentz_polarization
+        return self.structure_factor(indices, order_parameter, angle)**2 * p * lorentz_polarization * TF
     
-    def order_fit(self, x, order_parameter):
-        intensities = np.array([self.intensity(i + self.peak_ignore, order_parameter) for i in range(len(x))])
+    def order_fit(self, x, order_parameter, epsilon):
+        intensities = np.array([self.intensity(i + self.peak_ignore, order_parameter, epsilon) for i in range(len(x))])
         
         return intensities / np.sum(intensities)
     
@@ -82,12 +86,12 @@ class IntensityAnalysis(p.ParameterAnalysis):
             self.order_fit,
             x, y,
             sigma=y_err,
-            p0=(1.0)
+            p0=(1.0, 0.0)
         )
         
         if draw:
-            print popt[0]
-            y_fit = self.order_fit(x, popt[0])
+            print popt[0], popt[1]
+            y_fit = self.order_fit(x, *popt)
             plt.errorbar(x, y, y_err)
             plt.plot(x, y_fit)
             plt.show()
@@ -108,7 +112,7 @@ if __name__ == "__main__":
     A.remove_noise()
     A.fill_peaks()
     
-    A.average_lattice(draw=True)
+    A.average_lattice()
     
     #A.fill_peaks()
     #A.fill_intensities()
@@ -141,11 +145,12 @@ if __name__ == "__main__":
     
     B = IntensityAnalysis(file_name="MysteryB_31Jan.UXD", peaks=peaks_B, noise=noise_B, uxd=True)
     B.remove_noise()
-    d.Data("Old_data/Mystery_B_13-1-17.UXD").draw()
-    B.fill_peaks(draw=False)
+    #d.Data("Old_data/Mystery_B_13-1-17.UXD").draw()
+    #B.draw()
+    B.fill_peaks()#draw_peaks=[1, 10])
     B.fill_intensities()
     
-    B.average_lattice(draw=True, miller="any")
+    B.average_lattice(draw=False, miller="any")
     B.compare_intensity(draw=True)
     
     #B.average_lattice(draw=True, miller="any")
